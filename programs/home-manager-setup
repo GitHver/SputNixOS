@@ -1,0 +1,92 @@
+#! /usr/bin/env bash
+set -ueo pipefail
+
+owd=$(pwd)
+homepath=~/Nix/home-manager
+gitrepo=Githver/nixisotemphome
+
+function main {
+
+    if command -v home-manager &>/dev/null; then
+        echo "home-manager is already installed"
+        exit 2
+    fi
+
+    if [ ! -f $homepath ]; then
+        create-paths
+    fi
+    # Open the flake in the editor to change variables to their correct values
+    nix shell nixpkgs#helix --command hx "$homepath"/flake.nix
+    # $EDITOR "$homepath"/flake.nix
+    $EDITOR "$homepath"/hosts/"$HOSTNAME"/info.nix
+    install
+    check-nixetc
+
+    # Go back home
+    cd "$owd"
+}
+
+function create-paths {
+    # Create the `Nix` directories
+    mkdir -p "$homepath"
+    # Clone the repository and remove the git repo
+    nix shell nixpkgs#git --command git clone https://github.com/"$gitrepo".git "$homepath"
+    rm -rf "$homepath"/.git
+    # Creates a symbolic link in the home-manager directory
+    mkdir ~/.config/home-manager
+    # if [ -L ~/.config/home-manger/flake.nix ]; then
+    #     rm ~/.config/home-manager/flake.nix
+    # fi
+    # Creates a symbolic link for shorter commands
+    ln -s "$homepath"/flake.nix ~/.config/home-manager
+    # Create the `hosts` directory in the home manager repo
+    mkdir -p "$homepath"/hosts/"$HOSTNAME"
+    # Copy the default file from the sample host.
+    cp "$homepath"/hosts/sample-host/default.nix "$homepath"/hosts/"$HOSTNAME"/default.nix
+    # Create a file with the host name of the current machine
+    # touch $homepath/hosts/$HOSTNAME/info.nix
+    echo '
+    {
+      name = '\""$HOSTNAME"\"';
+      system = # Choose the right architecture for this machine
+        "x86_64-linux"
+        # "aarch64-linux"
+      ;
+    }
+    ' > "$homepath"/hosts/"$HOSTNAME"/info.nix
+    sed -i "s/your-username/$USER/" flake.lock
+}
+
+function install {
+    # Install and run home-manager
+    nix shell nixpkgs#home-manager --command home-manager switch
+    if [ $? != 0 ]; then
+        echo '
+            The home-manager build failed. This can be for a number of reasons.
+            Try updating the "lock" file with `nix flake update` and try again.
+        '
+        exit 1
+    fi
+    # Initialize the Home-manager git repository
+    cd "$homepath"
+    git init
+    git add .
+    git commit -m 'initial commit'
+}
+
+function check-nixetc {
+    if [ -f /etc/nixos/flake.lock ]; then
+        echo "moving the NixOS config from /etc/nixos into $USER/Nix/nixos-config"
+        cp -r /etc/nixos ~/Nix/nixos-config
+        sudo rm -rf /etc/nixos/*
+        sudo ln -s "$USER"/Nix/nixos-config/flake.nix /etc/nixos/flake.nix
+    else
+        echo "/etc/nixos is already empty"
+    fi
+}
+
+main "$@"
+
+# Gera betur næst
+# krokk
+# asdasdgf

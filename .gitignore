@@ -1,0 +1,88 @@
+# ignore all builds
+**/result
+
+# For your reference, here is an explanation of how to use gitignore syntax
+#
+# foo
+# # every file and directory named 'foo'
+#
+# **/foo
+# same as above
+#
+# /foo
+# only files and directories in the root directory named 'foo'
+#
+# foo.*
+# all files named 'foo'
+#
+# foo/
+# all directories named 'foo'
+#
+# *foo/
+# all directories ending in 'foo'
+#
+# foo/bar
+# all files and directories named 'bar' in the 'foo' directory relative to root
+#
+# /foo/bar
+# same as above
+#
+# **/foo/bar
+# all files and directories named 'bar' in any 'foo' directory
+#
+# foo/**/bar
+# all files and directories named 'bar' in any directory under the  'foo'
+# directory in the root directory
+#
+# *.txt
+# every .txt file
+#
+# **/foo/*.txt
+# all .txt files in any 'foo' directory
+#
+# foo?
+# all files and directories named 'foo' + any other single character.
+# Matches "foot", "food" "fooP", "foo6", etc
+#
+# foo[dtl]
+# all files and directories named 'foo' + any of the specified characters.
+# Only matches "food",  "foot" and "fool"
+#
+# foo[a-B]
+# all files and directories named 'foo' + any character in range.
+# Matches "fooa", "foob", ... , "fooz", "fooA", "fooB"
+#
+# foo[0-13]
+# all files and directories named 'foo' + any numeric character in range.
+# Matches "foo0", "foo1", ... , "foo12", "foo13"
+#
+# !foot
+# ignores previous matches that match foot, adding them back inn
+#
+# foo[!bc]
+# all files and directories named 'foo' + any other character except the ones
+# specified in the brackets. Matches "fooa", "food", "foo3", etc, but not
+# "foob" and "fooc"
+#
+# You can combine the above in any way you need. Here is an example below:
+#
+# /*foo/**/bar?.*
+# !**/foo/bar[st].txt
+#
+# the above combination ignores any file named bar + any other character if the
+# file is located directly under or under any directory in all directories in
+# the root directory whose names end in foo. But if there are any .txt files
+# named bars or bart under a directory called foo anywhere, then they are
+# unmatched and thus not ignored.
+#
+# so ignored files are:
+#
+# /foo/barl.txt
+# /foo/foo/bart.md
+# /barfoo/bars.txt
+#
+# while tracked files are:
+#
+# /foo/bart.txt
+# /foo/foo/bars.txt
+# /barfoo/foo/bart.txt

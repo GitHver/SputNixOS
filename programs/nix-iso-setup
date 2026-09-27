@@ -1,0 +1,134 @@
+#! /usr/bin/env sh
+# set -eu # -o pipefail # Undefined in POSIX shell.
+
+repo="SputNix"
+
+main() {
+    # Clone the repository
+    git clone https://github.com/GitHver/nixisotemp.git ./"$repo"
+
+    # Get variables to replace in file
+    # userandhost
+    printf "Hostname: "
+    read host_name
+    printf "Username: "
+    read user_name
+    printf "Displayname: "
+    read display_name
+
+    # localization
+    locale -a | less -X
+    printf "Type in your language: "
+    read selected_language
+
+    echo "use another language for formatting? (time, date, messurments, currency, etc)"
+    inputAccept || return
+
+    printf "Type in your language to use for formatting: "
+    read selected_formatting
+
+    # partitioning
+    echo '*'
+    lsblk
+    echo '*'
+    # stay=true
+    # while $stay; do
+    printf "type in the name of the disk to install NixOS onto: "
+    read disktype
+    # echo "is this the correct disk?: $disktype"
+    # input-accept
+    # done
+    printf "Do you want your filesystem to be encrypted?"
+    inputAccept || return
+    encrypt=true
+
+    # while true; do
+    #     printf "type in your decryption passphrase: "
+    #     read -s decrypt_passphrase # POSIX undefined
+    #     printf "\n         retype in your passphrase: "
+    #     read -s reread_decrypt_passphrase # POSIX undefined
+
+    #     if [ "$decrypt_passphrase" = "$reread_decrypt_passphrase" ]; then
+    #         echo "setting encryption..."
+    #         break
+    #     fi
+    #     printf "\npassphrases do not match" >& 2
+    # done
+    # # echo -n "$decrypt_passphrase" | sudo tee ./decrypt_passphrase.txt # POSIX undefined
+    # echo -n "$decrypt_passphrase" | sudo tee /tmp/decrypt_passphrase.txt # POSIX undefined
+
+    # testallation
+    echo "set values..."
+    echo "${display_name:=$user_name}" > /dev/null
+    echo "${selected_formatting:=$selected_language}" > /dev/null
+    echo "
+        hostname = $host_name,
+        username = $user_name,
+        displayame = $display_name,
+        language = $selected_language,
+        formatting = $selected_formatting,
+        disk to mount = $disktype,
+        encryption = $encrypt
+    " 
+    sleep 5
+    echo "done!"
+
+    # installation
+    cd ~/"$repo"
+    rm -rf .git
+
+    # rename user
+    sed -i "s/your_username/$user_name/" ./hosts/your-hostname/users/your-user.nix
+    sed -i "s/your_displayname/${display_name:=$user_name}/" ./hosts/your-hostname/users/your-user.nix
+    mv ./hosts/your-hostname/users/your-user.nix ./hosts/your-hostname/users/"$user_name".nix
+
+    # rename host
+    mv ./hosts/your-hostname ./hosts/"$host_name"
+
+    # change locale
+    sed -i "s/language-locale/$selected_language/" ./configs/configuration.nix
+    sed -i "s/formatting-locale/${selected_formatting:-$selected_language}/" ./configs/configuration.nix
+
+    # Set the correct disktype
+    sed -i "s,/dev/disktype,/dev/$disktype," ./hosts/"$host_name"/disko.nix
+    if $encrypt; then
+        sed -i "s/encrypt=false/encrypt=true/" ./hosts/"$host_name"/disko.nix
+    fi
+
+    # mounting the disk
+    sudo nix --experimental-features "nix-command flakes" run github:nix-community/disko -- --mode disko ./hosts/"$host_name"/disko.nix
+
+    # Moving the repository
+    sudo nixos-generate-config --no-filesystems --root /mnt
+    sudo cp -r ~/"$repo"/. /mnt/etc/nixos
+    cd /mnt/etc/nixos
+    sudo mv ./hardware-configuration.nix ./hosts/"$host_name"
+    sudo rm ./configuration.nix
+
+    # Start the install
+    sudo nixos-install --flake .#"$host_name"
+
+}
+
+# This function can be called to take input from the user on whether to proceed.
+inputAccept() {
+    for i in 1 2 3; do 
+        printf "continue? [Y/N]: " >& 2
+        read input
+        case $input in
+        [yY]) return 0 ;;
+        [nN]) return 1 ;;
+        *)
+            if [ $i -lt  3 ]; then
+                sleep 0.5
+            else
+                echo "3 invalid answers, aborting" >& 2
+                exit 2
+            fi
+            ;;
+        esac
+        echo "not \`y\` or \`n\`. try again" >& 2
+    done
+}
+
+main "$@"
