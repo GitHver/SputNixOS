@@ -1,18 +1,19 @@
-{ pkgs, lib, config, ... }:
+{ pkgs
+, lib
+, config
+, ...
+}:
 
-with lib;
 let
-  cnfg = config.qemuvm;
-in
+  inherit (lib) mkEnableOption mkIf;
+  cfg = config.programs.qemuvm;
+in {
 
-{
-  options.qemuvm.enable = mkOption {
-    type = types.bool;
-    default = false;
-    # description = "QEMU virtual machines";
-  };
+  options.programs.qemuvm.enable = mkEnableOption ''
+    the QEMU virtual machine
+  '';
 
-  config = mkIf cnfg.enable {
+  config = mkIf cfg.enable {
     environment.systemPackages = with pkgs; [
       #==<< QEMU >>=======================>
       qemu
@@ -22,6 +23,8 @@ in
           -bios ${pkgs.OVMF.fd}/FV/OVMF.fd \
           "$@"
       '')
+      # nemu
     ];
   };
+
 }

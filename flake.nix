@@ -2,27 +2,41 @@
 
   # Replace this with a description of what your flake does
   description = ''
-    # The SputNix Extras flake!
+    # The SputNix flake!
+
+    The Purpose this flake is to be a starting template for beginners to use
+    in order to get familiar with the Nix ecosystem. It is not a complete
+    framework for using your system like a distribution, but is designed in
+    a way for you to be easily able to modify by taking a fairly unopinionated
+    stance on structuring.
   '';
 
   inputs = {
     #====<< Core Nixpkgs >>====================================================>
     nixpkgs.url = "github:nixos/nixpkgs/nixos-unstable";
+    #====<< Other >>===========================================================>
+    disko.url = "github:nix-community/disko";
+    disko.inputs.nixpkgs.follows = "nixpkgs";
+    nixos-hardware.url = "github:NixOS/nixos-hardware/master";
+    # nixos-hardware.inputs.nixpkgs.follows = "nixpkgs";
+    sputnix-extras.url = "github:GitHver/nixisoextras";
+    sputnix-extras.inputs.nixpkgs.follows = "nixpkgs";
   };
 
   #====<< Outputs Field >>=====================================================>
-  outputs = inputs @ { self, nixpkgs, ... }: let
-    #====<< Required arguments >>======>
-    lib = nixpkgs.lib ;# // outputs.lib;
+  outputs = { self, nixpkgs, ... } @ inputs: let
+    #====<< Required variables >>======>
+    lib = nixpkgs.lib;
+    alib = inputs.sputnix-extras.lib;
     #====<< Used functions >>==========>
-    inherit (lib) genAttrs;
+    inherit (lib) nixosSystem genAttrs;
+    inherit (alib) namesOfDirsIn attrsForEach;
+    inherit (lib.lists) flatten;
     inherit (lib.filesystem) listFilesRecursive;
-    attrsForEach = import ./library/attrsForEach.nix { inherit lib; };
-    getBaseFileNames = import ./library/getBaseFileNames.nix { inherit lib; };
     #====<< Host information >>========>
     # This is only for the formatter, as it is not tied to an active system.
-    genEachArch = (funct: genAttrs supportedArchs funct);
-    supportedArchs = [
+    genForAllSystems = (funct: genAttrs supportedSystems funct);
+    supportedSystems = [
       "x86_64-linux"
       "x86_64-darwin"
       "i686-linux"
@@ -35,27 +49,40 @@
     # This defines the formatter that is used when you run `nix fmt`. Since this
     # calls the formatters package, you'll need to define which architecture
     # package is used so different computers can fetch the right package.
-    formatter = genEachArch (system:
+    formatter = genForAllSystems (system:
       let pkgs = nixpkgs.legacyPackages.${system};
       in pkgs.nixpkgs-fmt
       or pkgs.nixfmt-rfc-style
       or pkgs.alejandra
     );
 
-    #====<< Nix Expression Library >>==========================================>
-    # When programming in any language, you will want to avoid writing
-    # repetitive lines and definitions. Here you can define your own custom Nix
-    # library accessable to others who reference your flake.
-    lib = attrsForEach (getBaseFileNames ./library) (fn: {
-      ${fn} = import ./library/${fn}.nix { inherit lib; };
+    #====<< NixOS Configurations >>============================================>
+    # Here are all your different configurations. The function below takes a
+    # list of all the hostnames for your hosts (determined by the names of the
+    # directories in the `/hosts` directory) and creates an attribute set for
+    # each host in the list.
+    nixosConfigurations = attrsForEach (namesOfDirsIn ./hosts) (host: {
+      "${host}" = nixosSystem {
+        specialArgs = { inherit inputs lib alib host; };
+        modules = flatten [
+          ./hosts/${host}
+          self.nixosModules.full
+          { nixpkgs.overlays = self.overlays.inputOverlays; }
+        ];
+      };
     });
 
     #====<< NixOS Modules >>===================================================>
     # This creates an attributeset where the default attribute is a list of
     # all paths to modules. This can then be referenced with the `self`
     # attribute to give you access to all your modules anwhere.
-    nixosModules = {
+    nixosModules = rec {
       default = { imports = listFilesRecursive ./modules; };
+      full = [ default ] ++ inputModules;
+      inputModules = (with inputs; [
+        disko.nixosModules.default
+        # other.nixosModules.default
+      ]);
     };
 
     #====<< Overlays >>========================================================>
@@ -64,58 +91,23 @@
     # alloes you to apply your own patches or build flags with out needing to
     # maintain a fork of nixpkgs or adding a third party repository.
     overlays = {
-      default = (final: prev: {
-        sputnix = self.packages.${final.stdenv.hostPlatform.system};
-      });
+      inputOverlays = (with inputs; [
+        sputnix-extras.overlays.default
+      ]);
+      # someOtherOverlay = overlay;
     };
 
-    #====<< Nix Development Shells >>==========================================>
-    # Development shells `nix develop` are ephemeral environments where you can
-    # get access to packages that are only available in the initialized shell
-    # (like `nix shell`), but here you can go through execution stages manually
-    # to better test and verify packages. Packages from dev shells are also
-    # cached after initialization so that later calls are instant.
-    devShells = genEachArch (system:
-    let pkgs = nixpkgs.legacyPackages.${system}; in
-      attrsForEach (getBaseFileNames ./shells) (shell: {
-        ${shell} = import ./shells/${shell}.nix { inherit pkgs; };
-      })
-      # # Here you can set the default package (built with `nix develop`)
-      # // { default = import ./shells/isoShell.nix { inherit pkgs; }; }
-    );
+  }; ############### The end of the `outputs` scope ############################
 
-    #====<< Packages >>========================================================>
-    # Here is where you define your custom packages. You can package anything
-    # you want, but should only keep personal packages in this repository as it
-    # is better to keep papackages you want to be publicaly accessable in a
-    # seperate repository and eventually added to the offical nixpkgs repo.
-    packages = genEachArch (system:
-    let pkgs = nixpkgs.legacyPackages.${system}; in 
-      attrsForEach (getBaseFileNames ./packages) (package: {
-        ${package} = import ./packages/${package}.nix { inherit pkgs; };
-      })
-    );
-
-    #====<< Applications >>====================================================>
-    # Applications differ from packages by that they can be started with:
-    # `nix run .#<name-of-application>`. As you can only "run" applications,
-    # other packages like theme sets or program extensions like plugins cannot
-    # be applications. Other than that they are identical.
-    # apps = genEachArch (system:
-    # let pkgs = nixpkgs.legacyPackages.${system}; in 
-    #   attrsForEach (getBaseFileNames ./packages) (package: {
-    #     ${package} = import ./packages/${package}.nix { inherit pkgs; };
-    #   })
-    #   # Here you can set the default package (built with `nix build`)
-    #   // { default = import ./packages/nix-iso-setup.nix { inherit pkgs; }; }
-    # );
-
-    #====<< Literally Anything >>==============================================>
-    # The ouputs set can contain anything you want, the above are just things
-    # mapped by the Nix command or just convention (which you should follow!),
-    # but if you need some thing else, you can just create an attribute for it.
-    anyName = "anything";
-
+  nixConfig = {
+    extra-substituters = [
+      "https://nix-community.cachix.org"
+      # "https://cosmic.cachix.org/"
+    ];
+    extra-trusted-public-keys = [
+      "nix-community.cachix.org-1:mB9FSh9qf2dCimDSUo8Zy7bkq5CX+/rkCWyvRCYg3Fs="
+      # "cosmic.cachix.org-1:Dya9IyXD4xdBehWjrkPv6rtxpmMdRel02smYzA85dPE="
+    ];
   };
 
-} ################ End of Output and inital scope ##############################
+} ################## End of the inital scope ###################################
